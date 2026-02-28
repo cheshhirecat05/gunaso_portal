@@ -152,7 +152,7 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          {/* </div>
+          {/* {/* </div>
           <div className="contact-form-wrap">
             <h3 className="contact-form-title">Send Us a Message</h3>
             <p className="contact-form-sub">We'll respond within 24 business hours</p>
@@ -165,8 +165,8 @@ export default function HomePage() {
             <div className="form-group"><label className="form-label">Subject</label><input className="form-input" placeholder="Brief subject" value={contactForm.subject} onChange={e => setContactForm({ ...contactForm, subject: e.target.value })} /></div>
             <div className="form-group"><label className="form-label">Message</label><textarea className="form-input" placeholder="Describe your issue..." value={contactForm.msg} onChange={e => setContactForm({ ...contactForm, msg: e.target.value })} /></div>
             <button className="btn-primary btn-full" onClick={submitContact}>Send Message →</button>
-          </div> */}
-        </div>
+           </div>  */}
+        </div> */}
       </section>
 
       <Footer />
