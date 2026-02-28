@@ -1,10 +1,11 @@
 import Badge from '../../components/Badge';
 
 export default function CDHome({ user, grievances, onNewGrievance }) {
-  const myGrievances = grievances.filter(g => g.userId === user.id);
+  // grievances already filtered for this user from the API
+  const myGrievances = grievances;
   const pending = myGrievances.filter(g => g.status === 'Pending').length;
   const resolved = myGrievances.filter(g => g.status === 'Resolved').length;
-  const recent = myGrievances.slice(-3).reverse();
+  const recent = myGrievances.slice(0, 3);
 
   return (
     <div>

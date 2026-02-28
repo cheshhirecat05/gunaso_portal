@@ -1,14 +1,18 @@
 import { useState } from "react";
 import Badge from "../../components/Badge";
+import Pagination from "../../components/Pagination";
+
+const PER_PAGE = 8;
 
 export default function CDGallery({ user, grievances }) {
   const [preview, setPreview] = useState(null);
+  const [page, setPage] = useState(1);
 
   if (!user) return null;
 
-  const myGrievances = (grievances || [])
-    .filter(g => g.userId === user.id)
-    .reverse();
+  const myGrievances = (grievances || []).slice();
+  const totalPages = Math.ceil(myGrievances.length / PER_PAGE);
+  const paged = myGrievances.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   return (
     <div className="table-card">
@@ -36,14 +40,14 @@ export default function CDGallery({ user, grievances }) {
         </thead>
 
         <tbody>
-          {myGrievances.length === 0 ? (
+          {paged.length === 0 ? (
             <tr>
               <td colSpan={6} style={{ textAlign: "center", padding: 30 }}>
                 No gallery items found.
               </td>
             </tr>
           ) : (
-            myGrievances.map(g => (
+            paged.map(g => (
               <tr key={g.ticketNo}>
                 <td>{g.ticketNo}</td>
                 <td>{g.subject}</td>
@@ -59,29 +63,18 @@ export default function CDGallery({ user, grievances }) {
 
                 <td>
                   {g.attachment ? (
-                    g.attachment.type === "application/pdf" ? (
-                      <a
-                        href={g.attachment.data}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-outline"
-                      >
-                        View PDF
-                      </a>
-                    ) : (
-                      <img
-                        src={g.attachment.data}
-                        alt=""
-                        width={50}
-                        style={{
-                          cursor: "pointer",
-                          borderRadius: 6
-                        }}
-                        onClick={() =>
-                          setPreview(g.attachment.data)
-                        }
-                      />
-                    )
+                    <img
+                      src={g.attachment.data}
+                      alt=""
+                      width={50}
+                      style={{
+                        cursor: "pointer",
+                        borderRadius: 6
+                      }}
+                      onClick={() =>
+                        setPreview(g.attachment.data)
+                      }
+                    />
                   ) : (
                     "-"
                   )}
@@ -91,6 +84,7 @@ export default function CDGallery({ user, grievances }) {
           )}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       {preview && (
         <div

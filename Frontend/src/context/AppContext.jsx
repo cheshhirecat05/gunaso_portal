@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { getSession, setSession, clearSession } from '../utils/storage';
+import { getMe } from '../utils/api';
 
 const AppContext = createContext();
 
@@ -11,10 +12,18 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     const s = getSession();
-    if (s) {
-      setSessionState(s);
-      if (s.type === 'citizen') setView('citizen-dash');
-      else if (s.type === 'admin') setView('admin-dash');
+    if (s && s.token) {
+      // Verify token with backend
+      getMe()
+        .then((data) => {
+          const restoredSession = { ...s, ...data };
+          setSessionState(restoredSession);
+          if (data.type === 'citizen') setView('citizen-dash');
+          else if (data.type === 'admin') setView('admin-dash');
+        })
+        .catch(() => {
+          clearSession();
+        });
     }
   }, []);
 

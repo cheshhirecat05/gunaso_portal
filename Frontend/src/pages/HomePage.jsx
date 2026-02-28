@@ -1,7 +1,7 @@
 import { useApp } from '../context/AppContext';
 import Footer from '../components/Footer';
 import { useState } from 'react';
-import { getGrievances } from '../utils/storage';
+import * as api from '../utils/api';
 import Badge from '../components/Badge';
 import Alert from '../components/Alert';
 
@@ -12,13 +12,15 @@ export default function HomePage() {
   const [contactForm, setContactForm] = useState({ name: '', phone: '', email: '', subject: '', msg: '' });
   const [contactAlert, setContactAlert] = useState({ type: '', msg: '' });
 
-  const trackTicket = () => {
+  const trackTicket = async () => {
     const val = trackInput.trim().toUpperCase();
     if (!val) return;
-    const grievances = getGrievances();
-    const g = grievances.find(gr => gr.ticketNo.toUpperCase() === val);
-    if (!g) { setTrackResult({ error: `No ticket found with number "${val}".` }); return; }
-    setTrackResult(g);
+    try {
+      const g = await api.trackGrievance(val);
+      setTrackResult(g);
+    } catch (err) {
+      setTrackResult({ error: err.message });
+    }
   };
 
   const submitContact = () => {

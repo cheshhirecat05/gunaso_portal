@@ -1,21 +1,22 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import * as api from '../utils/api';
 import Alert from './Alert';
-
-const ADMIN_EMAIL = 'admin@gunaso.gov.np';
-const ADMIN_PASS = 'admin123';
 
 export default function AdminModal() {
   const { adminModal, setAdminModal, login } = useApp();
   const [form, setForm] = useState({ email: '', pass: '' });
   const [alert, setAlert] = useState({ type: '', msg: '' });
 
-  const adminLogin = () => {
+  const adminLoginHandler = async () => {
     if (!form.email || !form.pass) return setAlert({ type: 'error', msg: 'Please enter credentials.' });
-    if (form.email.toLowerCase() !== ADMIN_EMAIL || form.pass !== ADMIN_PASS)
-      return setAlert({ type: 'error', msg: 'Invalid credentials. Please try again.' });
-    login({ type: 'admin' });
-    setAdminModal(false);
+    try {
+      const data = await api.adminLogin({ email: form.email, password: form.pass });
+      login({ ...data.session, token: data.token });
+      setAdminModal(false);
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
   };
 
   if (!adminModal) return null;
@@ -39,7 +40,7 @@ export default function AdminModal() {
             <label className="form-label">Password</label>
             <input className="form-input" type="password" placeholder="••••••••" value={form.pass} onChange={e => setForm({ ...form, pass: e.target.value })} />
           </div>
-          <button className="btn-primary btn-full" onClick={adminLogin}>Access Admin Panel</button>
+          <button className="btn-primary btn-full" onClick={adminLoginHandler}>Access Admin Panel</button>
           <div className="form-footer" style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 16 }}>
             Demo: admin@gunaso.gov.np / admin123
           </div>

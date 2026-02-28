@@ -1,25 +1,23 @@
-import { getUsers, getGrievances } from "../../utils/storage";
+import { useState, useEffect } from "react";
+import * as api from "../../utils/api";
 import Badge from "../../components/Badge";
 
 export default function ADHome() {
-  const users = getUsers() || [];
-  const grievances = getGrievances() || [];
+  const [stats, setStats] = useState(null);
+  const [ranked, setRanked] = useState([]);
 
-  const total = grievances.length;
-  const pending = grievances.filter(g => g.status === "Pending").length;
-  const resolved = grievances.filter(g => g.status === "Resolved").length;
+  useEffect(() => {
+    api.getDashboardStats()
+      .then(setStats)
+      .catch(err => console.error('Failed to load stats:', err));
+    api.getRankedGrievances()
+      .then(setRanked)
+      .catch(err => console.error('Failed to load ranked:', err));
+  }, []);
 
-  const recentGrievances = [...grievances].slice(-5).reverse();
+  if (!stats) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-light)' }}>Loading...</div>;
 
-  // Dynamic Category Calculation
-  const categoryMap = {};
-  grievances.forEach(g => {
-    categoryMap[g.category] = (categoryMap[g.category] || 0) + 1;
-  });
-  const categories = Object.keys(categoryMap).map(cat => ({
-    name: cat,
-    pct: total === 0 ? 0 : Math.round((categoryMap[cat] / total) * 100)
-  }));
+  const { totalGrievances: total, pending, resolved, totalUsers, categories, recentGrievances, trending } = stats;
 
   return (
     <div>
@@ -29,7 +27,7 @@ export default function ADHome() {
           ['📋', total, 'Total Grievances', 'red'],
           ['⏳', pending, 'Pending', 'gold'],
           ['✅', resolved, 'Resolved', 'green'],
-          ['👥', users.length, 'Registered Citizens', 'blue']
+          ['👥', totalUsers, 'Registered Citizens', 'blue']
         ].map(([icon, num, label, accent]) => (
           <div className="stat-card" key={label}>
             <div className={`stat-card-accent accent-${accent}`}></div>
@@ -64,23 +62,14 @@ export default function ADHome() {
                   </td>
                 </tr>
               ) : (
-                recentGrievances.map(g => {
-                  // Get user name from userId
-                  const citizen = users.find(u => u.id === g.userId);
-                  const name = citizen ? citizen.name : "Unknown";
-
-                  // Use the actual ticket number from CDHome
-                  const ticket = g.ticketNo || "No Ticket";
-
-                  return (
-                    <tr key={g.ticketNo || g.id}>
-                      <td><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{ticket}</span></td>
-                      <td>{name}</td>
-                      <td>{g.category || "-"}</td>
-                      <td><Badge status={g.status || "Pending"} /></td>
-                    </tr>
-                  );
-                })
+                recentGrievances.map(g => (
+                  <tr key={g.ticketNo}>
+                    <td><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{g.ticketNo}</span></td>
+                    <td>{g.citizenName || g.userName || 'Unknown'}</td>
+                    <td>{g.category || "-"}</td>
+                    <td><Badge status={g.status || "Pending"} /></td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -108,6 +97,112 @@ export default function ADHome() {
           ))}
         </div>
       </div>
+
+      {/* Algorithm 3: Trending Issues */}
+      {trending && (trending.trendingCategories?.length > 0 || trending.trendingLocations?.length > 0) && (
+        <div style={{
+          background: 'white', borderRadius: 16, padding: 24,
+          marginTop: 20, border: '1px solid rgba(0,0,0,0.06)'
+        }}>
+          <div style={{ fontSize: 18, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            📈 Trending Issues
+            <span style={{ fontSize: 12, color: 'var(--text-light)', fontWeight: 400 }}>
+              (Sliding Window Z-Score Analysis — last {trending.analysisWindow?.recentDays} days vs {trending.analysisWindow?.historicalDays}-day baseline)
+            </span>
+          </div>
+
+          {trending.trendingCategories?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>Trending Categories</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {trending.trendingCategories.map(t => (
+                  <div key={t.name} style={{
+                    padding: '8px 14px', borderRadius: 10, fontSize: 13,
+                    background: t.intensity === 'Critical' ? '#ffebee' : t.intensity === 'High' ? '#fff3e0' : '#e8f5e9',
+                    border: `1px solid ${t.intensity === 'Critical' ? '#ef9a9a' : t.intensity === 'High' ? '#ffcc80' : '#a5d6a7'}`
+                  }}>
+                    <strong>{t.name}</strong>
+                    <span style={{ marginLeft: 8, fontSize: 11, color: '#666' }}>
+                      z={t.zScore} · {t.recentCount} recent · {t.intensity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {trending.trendingLocations?.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>Trending Locations</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {trending.trendingLocations.map(t => (
+                  <div key={t.name} style={{
+                    padding: '8px 14px', borderRadius: 10, fontSize: 13,
+                    background: t.intensity === 'Critical' ? '#ffebee' : t.intensity === 'High' ? '#fff3e0' : '#e8f5e9',
+                    border: `1px solid ${t.intensity === 'Critical' ? '#ef9a9a' : t.intensity === 'High' ? '#ffcc80' : '#a5d6a7'}`
+                  }}>
+                    <strong>{t.name}</strong>
+                    <span style={{ marginLeft: 8, fontSize: 11, color: '#666' }}>
+                      z={t.zScore} · {t.recentCount} recent · {t.intensity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Algorithm 1: Priority-Ranked Grievances */}
+      {ranked.length > 0 && (
+        <div className="table-card" style={{ marginTop: 20 }}>
+          <div className="table-header">
+            <div className="table-title">
+              🎯 Priority-Ranked Grievances
+              <span style={{ fontSize: 12, color: 'var(--text-light)', fontWeight: 400, marginLeft: 8 }}>
+                (Weighted Multi-Factor Scoring Algorithm)
+              </span>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Score</th>
+                <th>Ticket</th>
+                <th>Subject</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Factors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranked.slice(0, 10).map(g => (
+                <tr key={g.ticketNo}>
+                  <td>
+                    <span style={{
+                      display: 'inline-block', width: 36, height: 36, lineHeight: '36px',
+                      textAlign: 'center', borderRadius: '50%', fontWeight: 700, fontSize: 13,
+                      background: g.priorityScore >= 70 ? '#c62828' : g.priorityScore >= 45 ? '#ef6c00' : '#2e7d32',
+                      color: 'white'
+                    }}>
+                      {g.priorityScore}
+                    </span>
+                  </td>
+                  <td><span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{g.ticketNo}</span></td>
+                  <td>{g.subject}</td>
+                  <td>{g.category}</td>
+                  <td><Badge status={g.priority || 'Normal'} /></td>
+                  <td><Badge status={g.status || 'Pending'} /></td>
+                  <td style={{ fontSize: 11, color: 'var(--text-light)' }}>
+                    K:{g.priorityFactors?.keyword} C:{g.priorityFactors?.category} A:{g.priorityFactors?.age} P:{g.priorityFactors?.priority}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

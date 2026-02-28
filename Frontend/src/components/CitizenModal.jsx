@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { getUsers, saveUsers, setSession } from '../utils/storage';
+import * as api from '../utils/api';
 import Alert from './Alert';
 
 export default function CitizenModal() {
@@ -11,6 +11,7 @@ export default function CitizenModal() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [currentOTP, setCurrentOTP] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
   const intervalRef = useRef(null);
 
@@ -24,45 +25,50 @@ export default function CitizenModal() {
   const showAlert = (type, msg) => setAlert({ type, msg });
   const hideAlert = () => setAlert({ type: '', msg: '' });
 
-  const citizenLogin = () => {
+  const citizenLogin = async () => {
     const { email, pass } = loginForm;
     if (!email || !pass) return showAlert('error', 'Please fill all fields.');
-    const users = getUsers();
-    const user = users.find(u => u.email === email.toLowerCase());
-    if (!user || atob(user.password) !== pass) return showAlert('error', 'Invalid email or password.');
-    login({ type: 'citizen', user });
-    setCitizenModal(false);
+    try {
+      const data = await api.citizenLogin({ email, password: pass });
+      login({ ...data.session, token: data.token });
+      setCitizenModal(false);
+    } catch (err) {
+      showAlert('error', err.message);
+    }
   };
 
-  const citizenRegister = () => {
+  const citizenRegister = async () => {
     const { name, phone, email, address, pass, pass2 } = regForm;
     if (!name || !phone || !email || !address || !pass) return showAlert('error', 'Please fill all required fields.');
     if (pass.length < 8) return showAlert('error', 'Password must be at least 8 characters.');
     if (pass !== pass2) return showAlert('error', 'Passwords do not match.');
-    const users = getUsers();
-    if (users.find(u => u.email === email.toLowerCase())) return showAlert('error', 'An account with this email already exists.');
-    const newUser = {
-      id: 'CIT-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-      name, phone, email: email.toLowerCase(), address,
-      password: btoa(pass), registeredAt: new Date().toLocaleDateString()
-    };
-    saveUsers([...users, newUser]);
-    showAlert('success', '✅ Account created! You can now log in.');
-    setTimeout(() => setTab('login'), 1500);
+    try {
+      await api.citizenRegister({ name, phone, email, address, password: pass });
+      showAlert('success', '✅ Account created! You can now log in.');
+      setTimeout(() => setTab('login'), 1500);
+    } catch (err) {
+      showAlert('error', err.message);
+    }
   };
 
-  const sendOTP = () => {
+  const sendOTP = async () => {
     const email = fpEmail.trim().toLowerCase();
     if (!email) return showAlert('error', 'Please enter your email address.');
-    const users = getUsers();
-    const user = users.find(u => u.email === email);
-    if (!user) return showAlert('error', 'No account found with this email.');
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setCurrentOTP(code);
-    setPendingEmail(email);
-    showAlert('info', `📧 Demo OTP: <strong>${code}</strong> (Copy this to verify)`);
-    setFpStep(2);
-    startResendTimer();
+    try {
+      const data = await api.forgotPassword(email);
+      setPendingEmail(email);
+      // In demo mode, show OTP; in production this would be sent via email
+      if (data.demoOtp) {
+        setCurrentOTP(data.demoOtp);
+        showAlert('info', `📧 Demo OTP: <strong>${data.demoOtp}</strong> (Copy this to verify)`);
+      } else {
+        showAlert('info', '📧 OTP sent to your email.');
+      }
+      setFpStep(2);
+      startResendTimer();
+    } catch (err) {
+      showAlert('error', err.message);
+    }
   };
 
   const startResendTimer = () => {
@@ -76,24 +82,31 @@ export default function CitizenModal() {
     }, 1000);
   };
 
-  const verifyOTP = () => {
+  const verifyOTP = async () => {
     const entered = otp.join('');
     if (entered.length < 6) return showAlert('error', 'Please enter the complete 6-digit OTP.');
-    if (entered !== currentOTP) return showAlert('error', 'Incorrect OTP. Please try again.');
-    hideAlert();
-    setFpStep(3);
+    try {
+      const data = await api.verifyOtp(pendingEmail, entered);
+      setResetToken(data.resetToken);
+      hideAlert();
+      setFpStep(3);
+    } catch (err) {
+      showAlert('error', err.message);
+    }
   };
 
-  const resetPassword = () => {
+  const handleResetPassword = async () => {
     const { pass, pass2 } = newPass;
     if (!pass) return showAlert('error', 'Please enter a new password.');
     if (pass.length < 8) return showAlert('error', 'Password must be at least 8 characters.');
     if (pass !== pass2) return showAlert('error', 'Passwords do not match.');
-    const users = getUsers();
-    const idx = users.findIndex(u => u.email === pendingEmail);
-    if (idx >= 0) { users[idx].password = btoa(pass); saveUsers(users); }
-    showAlert('success', '✅ Password reset successfully! Please login with your new password.');
-    setTimeout(() => { setTab('login'); setFpStep(1); }, 2000);
+    try {
+      await api.resetPassword(resetToken, pass);
+      showAlert('success', '✅ Password reset successfully! Please login with your new password.');
+      setTimeout(() => { setTab('login'); setFpStep(1); }, 2000);
+    } catch (err) {
+      showAlert('error', err.message);
+    }
   };
 
   const handleOtpInput = (val, idx) => {
@@ -185,7 +198,18 @@ export default function CitizenModal() {
                     ))}
                   </div>
                   <div className="resend-timer">
-                    {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : <button className="link-btn" onClick={() => { const code = Math.floor(100000 + Math.random() * 900000).toString(); setCurrentOTP(code); showAlert('info', `New OTP: <strong>${code}</strong>`); startResendTimer(); }}>Resend OTP</button>}
+                    {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : <button className="link-btn" onClick={async () => {
+                      try {
+                        const data = await api.forgotPassword(pendingEmail);
+                        if (data.demoOtp) {
+                          setCurrentOTP(data.demoOtp);
+                          showAlert('info', `New OTP: <strong>${data.demoOtp}</strong>`);
+                        }
+                        startResendTimer();
+                      } catch (err) {
+                        showAlert('error', err.message);
+                      }
+                    }}>Resend OTP</button>}
                   </div>
                   <button className="btn-primary btn-full" style={{ marginTop: 12 }} onClick={verifyOTP}>Verify OTP</button>
                 </div>
@@ -199,7 +223,7 @@ export default function CitizenModal() {
                   </div>
                   <div className="form-group"><label className="form-label">New Password</label><input className="form-input" type="password" placeholder="Minimum 8 characters" value={newPass.pass} onChange={e => setNewPass({ ...newPass, pass: e.target.value })} /></div>
                   <div className="form-group"><label className="form-label">Confirm New Password</label><input className="form-input" type="password" placeholder="Confirm new password" value={newPass.pass2} onChange={e => setNewPass({ ...newPass, pass2: e.target.value })} /></div>
-                  <button className="btn-primary btn-full" onClick={resetPassword}>Reset Password</button>
+                  <button className="btn-primary btn-full" onClick={handleResetPassword}>Reset Password</button>
                 </div>
               )}
             </div>

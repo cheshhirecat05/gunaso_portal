@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { getUsers, saveUsers } from '../../utils/storage';
+import * as api from '../../utils/api';
 import Alert from '../../components/Alert';
 
 export default function CDProfile({ user }) {
   const [form, setForm] = useState({ name: user.name, phone: user.phone || '', address: user.address || '' });
   const [alert, setAlert] = useState({ type: '', msg: '' });
 
-  const save = () => {
-    const users = getUsers();
-    const idx = users.findIndex(u => u.id === user.id);
-    if (idx >= 0) { users[idx] = { ...users[idx], ...form }; saveUsers(users); }
-    setAlert({ type: 'success', msg: '✅ Profile updated successfully.' });
+  const save = async () => {
+    try {
+      await api.updateProfile(form);
+      setAlert({ type: 'success', msg: '✅ Profile updated successfully.' });
+    } catch (err) {
+      setAlert({ type: 'error', msg: err.message });
+    }
   };
 
   return (

@@ -1,54 +1,57 @@
 import { useState, useEffect } from "react";
-import { getGrievances, saveGrievances, getUsers } from "../../utils/storage";
+import * as api from "../../utils/api";
 import Badge from "../../components/Badge";
+import Pagination from "../../components/Pagination";
 
 export default function ADGrievances() {
   const [rows, setRows] = useState([]);
-  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  // Load grievances and users on mount
-  useEffect(() => {
-    setRows(getGrievances() || []);
-    setUsers(getUsers() || []);
-  }, []);
-
-  // Update status based on ticketNo only
-  const updateStatus = (ticketNo, newStatus) => {
-    setRows(prevRows => {
-      const updated = prevRows.map(g =>
-        g.ticketNo === ticketNo
-          ? {
-              ...g,
-              status: newStatus,
-              resolvedAt: newStatus === "Resolved" ? new Date().toISOString() : g.resolvedAt,
-            }
-          : g
-      );
-      saveGrievances(updated);
-      return updated;
-    });
+  const fetchGrievances = async () => {
+    try {
+      const params = { page, limit: 10 };
+      if (search) params.search = search;
+      if (statusFilter !== "All Status") params.status = statusFilter;
+      if (categoryFilter !== "All Categories") params.category = categoryFilter;
+      const data = await api.getAllGrievances(params);
+      setRows(data.grievances || []);
+      setTotalPages(data.totalPages || 1);
+      setTotal(data.total || 0);
+    } catch (err) {
+      console.error('Failed to fetch grievances:', err);
+    }
   };
 
-  // Filter rows based on search, status, and category
-  const filteredRows = rows.filter(g => {
-    const citizen = users.find(u => u.id === g.userId);
-    const name = citizen ? citizen.name : "";
+  useEffect(() => {
+    fetchGrievances();
+  }, [search, statusFilter, categoryFilter, page]);
 
-    const matchesSearch =
-      g.ticketNo?.toLowerCase().includes(search.toLowerCase()) ||
-      name.toLowerCase().includes(search.toLowerCase()) ||
-      g.subject?.toLowerCase().includes(search.toLowerCase());
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, categoryFilter]);
 
-    const matchesStatus = statusFilter === "All Status" || g.status === statusFilter;
-    const matchesCategory = categoryFilter === "All Categories" || g.category === categoryFilter;
+  const updateStatus = async (ticketNo, newStatus) => {
+    try {
+      await api.updateGrievanceStatus(ticketNo, newStatus);
+      setRows(prevRows =>
+        prevRows.map(g =>
+          g.ticketNo === ticketNo
+            ? { ...g, status: newStatus, resolvedAt: newStatus === "Resolved" ? new Date().toISOString() : g.resolvedAt }
+            : g
+        )
+      );
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    }
+  };
 
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
-
-  const categoryOptions = ["All Categories", ...new Set(rows.map(g => g.category).filter(Boolean))];
+  const categoryOptions = ["All Categories", "Healthcare", "Education", "Infrastructure", "Environment", "Other"];
 
   return (
     <div>
@@ -89,7 +92,7 @@ export default function ADGrievances() {
       <div className="table-card">
         <div className="table-header">
           <div className="table-title">All Grievances</div>
-          <div>{filteredRows.length} total</div>
+          <div>{total} total</div>
         </div>
 
         <table>
@@ -106,49 +109,44 @@ export default function ADGrievances() {
           </thead>
 
           <tbody>
-            {filteredRows.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: "center", padding: 20 }}>
                   No grievances found.
                 </td>
               </tr>
             ) : (
-              filteredRows.map(g => {
-                const citizen = users.find(u => u.id === g.userId);
-                const name = citizen ? citizen.name : "Unknown";
-                const ticket = g.ticketNo || "No Ticket";
-
-                return (
-                  <tr key={ticket}>
-                    <td>
-                      <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{ticket}</span>
-                    </td>
-                    <td>{name}</td>
-                    <td>{g.subject || "-"}</td>
-                    <td>{g.category || "-"}</td>
-                    <td>
-                      <Badge status={g.priority || "Normal"} />
-                    </td>
-                    <td>
-                      <Badge status={g.status || "Pending"} />
-                    </td>
-                    <td>
-                      <select
-                        value={g.status || "Pending"}
-                        onChange={e => updateStatus(ticket, e.target.value)}
-                      >
-                        <option>Pending</option>
-                        <option>In Review</option>
-                        <option>Resolved</option>
-                        <option>Urgent</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })
+              rows.map(g => (
+                <tr key={g.ticketNo}>
+                  <td>
+                    <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{g.ticketNo}</span>
+                  </td>
+                  <td>{g.userName || "Unknown"}</td>
+                  <td>{g.subject || "-"}</td>
+                  <td>{g.category || "-"}</td>
+                  <td>
+                    <Badge status={g.priority || "Normal"} />
+                  </td>
+                  <td>
+                    <Badge status={g.status || "Pending"} />
+                  </td>
+                  <td>
+                    <select
+                      value={g.status || "Pending"}
+                      onChange={e => updateStatus(g.ticketNo, e.target.value)}
+                    >
+                      <option>Pending</option>
+                      <option>In Review</option>
+                      <option>Resolved</option>
+                      <option>Urgent</option>
+                    </select>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </div>
     </div>
   );

@@ -1,63 +1,37 @@
 import { useState, useEffect } from "react";
-import { getGrievances, saveGrievances, getUsers } from "../../utils/storage";
+import * as api from "../../utils/api";
 import Badge from "../../components/Badge";
+import Pagination from "../../components/Pagination";
 
-export default function ADGrievances() {
+export default function ADGrievanceGallery() {
 
   const [rows, setRows] = useState([]);
-  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [preview, setPreview] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    setRows(getGrievances() || []);
-    setUsers(getUsers() || []);
-  }, []);
+    const params = { page, limit: 10 };
+    if (search) params.search = search;
+    if (statusFilter !== "All Status") params.status = statusFilter;
+    if (categoryFilter !== "All Categories") params.category = categoryFilter;
+    api.getAllGrievances(params)
+      .then(data => {
+        setRows(data.grievances || []);
+        setTotalPages(data.totalPages || 1);
+        setTotal(data.total || 0);
+      })
+      .catch(err => console.error('Failed to load grievances:', err));
+  }, [search, statusFilter, categoryFilter, page]);
 
-  const updateStatus = (ticketNo, newStatus) => {
+  // Reset page when filters change
+  useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter]);
 
-    const updated = rows.map(g =>
-      g.ticketNo === ticketNo
-        ? {
-            ...g,
-            status: newStatus,
-            resolvedAt:
-              newStatus === "Resolved"
-                ? new Date().toISOString()
-                : g.resolvedAt
-          }
-        : g
-    );
-
-    saveGrievances(updated);
-    setRows(updated);
-  };
-
-  const filteredRows = rows.filter(g => {
-
-    const citizen = users.find(u => u.id === g.userId);
-    const name = citizen ? citizen.name : "";
-
-    const matchesSearch =
-      g.ticketNo?.toLowerCase().includes(search.toLowerCase()) ||
-      name.toLowerCase().includes(search.toLowerCase()) ||
-      g.subject?.toLowerCase().includes(search.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "All Status" || g.status === statusFilter;
-
-    const matchesCategory =
-      categoryFilter === "All Categories" ||
-      g.category === categoryFilter;
-
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
-
-  const categoryOptions = [
-    "All Categories",
-    ...new Set(rows.map(g => g.category).filter(Boolean))
-  ];
+  const categoryOptions = ["All Categories", "Healthcare", "Education", "Infrastructure", "Environment", "Other"];
 
   return (
     <div>
@@ -102,7 +76,7 @@ export default function ADGrievances() {
 
         <div className="table-header">
           <div className="table-title">All Grievances</div>
-          <div>{filteredRows.length} total</div>
+          <div>{total} total</div>
         </div>
 
         <table>
@@ -121,7 +95,7 @@ export default function ADGrievances() {
 
           <tbody>
 
-            {filteredRows.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: "center", padding: 20 }}>
                   No grievances found.
@@ -129,63 +103,70 @@ export default function ADGrievances() {
               </tr>
             ) : (
 
-              filteredRows.map(g => {
+              rows.map(g => (
+                <tr key={g.ticketNo}>
 
-                const citizen = users.find(u => u.id === g.userId);
-                const name = citizen ? citizen.name : "Unknown";
+                  <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                    {g.ticketNo}
+                  </td>
 
-                return (
-                  <tr key={g.ticketNo}>
+                  <td>{g.userName || "Unknown"}</td>
+                  <td>{g.subject}</td>
+                  <td>{g.category}</td>
 
-                    <td style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                      {g.ticketNo}
-                    </td>
+                  <td>
+                    <Badge status={g.priority || "Normal"} />
+                  </td>
 
-                    <td>{name}</td>
-                    <td>{g.subject}</td>
-                    <td>{g.category}</td>
+                  <td>
+                    <Badge status={g.status || "Pending"} />
+                  </td>
 
-                    <td>
-                      <Badge status={g.priority || "Normal"} />
-                    </td>
+                  <td>
+                    {g.attachment ? (
+                      <img
+                        src={g.attachment.data}
+                        width={50}
+                        style={{ borderRadius: 6, cursor: "pointer" }}
+                        alt=""
+                        onClick={() => setPreview(g.attachment.data)}
+                      />
+                    ) : "-"}
+                  </td>
 
-                    <td>
-                      <Badge status={g.status || "Pending"} />
-                    </td>
-
-                    <td>
-                      {g.attachment ? (
-                        g.attachment.type === "application/pdf" ? (
-                          <a
-                            href={g.attachment.data}
-                            target="_blank"
-                            className="btn-outline"
-                          >
-                            PDF
-                          </a>
-                        ) : (
-                          <img
-                            src={g.attachment.data}
-                            width={50}
-                            style={{ borderRadius: 6 }}
-                            alt=""
-                          />
-                        )
-                      ) : "-"}
-                    </td>
-
-                  </tr>
-                );
-              })
+                </tr>
+              ))
 
             )}
 
           </tbody>
 
         </table>
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       </div>
 
+      {preview && (
+        <div
+          onClick={() => setPreview(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.7)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999,
+            cursor: "pointer"
+          }}
+        >
+          <img
+            src={preview}
+            style={{ maxWidth: "80%", maxHeight: "80%", borderRadius: 8 }}
+            alt=""
+          />
+        </div>
+      )}
     </div>
   );
 }

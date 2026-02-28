@@ -1,72 +1,19 @@
-import { getUsers, getGrievances } from "../../utils/storage";
+import { useState, useEffect } from "react";
+import * as api from "../../utils/api";
 
 export default function ADReports() {
-  const users = getUsers() || [];
-  const grievances = getGrievances() || [];
+  const [data, setData] = useState(null);
 
-  // -------------------------
-  // 1️⃣ Monthly Registration Count
-  // -------------------------
-  const monthMap = {};
+  useEffect(() => {
+    api.getReportsData()
+      .then(setData)
+      .catch(err => console.error('Failed to load reports:', err));
+  }, []);
 
-  users.forEach(user => {
-    if (!user.registeredAt) return;
+  if (!data) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-light)' }}>Loading...</div>;
 
-    const date = new Date(user.registeredAt);
-    const month = date.toLocaleString("default", { month: "short" });
-
-    monthMap[month] = (monthMap[month] || 0) + 1;
-  });
-
-  const months = Object.keys(monthMap).map(m => ({
-    m,
-    count: monthMap[m]
-  }));
-
+  const { months, resolutionRate, avgDays } = data;
   const maxValue = Math.max(...months.map(x => x.count), 1);
-
-  // -------------------------
-  // 2️⃣ Resolution Rate
-  // -------------------------
-  const total = grievances.length;
-  const resolved = grievances.filter(
-    g => g.status === "Resolved"
-  ).length;
-
-  const resolutionRate =
-    total === 0
-      ? 0
-      : ((resolved / total) * 100).toFixed(1);
-
-  // -------------------------
-  // 3️⃣ Average Resolution Time
-  // -------------------------
-  const resolvedGrievances = grievances.filter(
-    g => g.status === "Resolved" &&
-         g.createdAt &&
-         g.resolvedAt
-  );
-
-  let avgDays = 0;
-
-  if (resolvedGrievances.length > 0) {
-    const totalDays = resolvedGrievances.reduce(
-      (sum, g) => {
-        const created = new Date(g.createdAt);
-        const resolvedDate = new Date(g.resolvedAt);
-        const diff =
-          (resolvedDate - created) /
-          (1000 * 60 * 60 * 24);
-
-        return sum + diff;
-      },
-      0
-    );
-
-    avgDays = (
-      totalDays / resolvedGrievances.length
-    ).toFixed(1);
-  }
 
   return (
     <div>
